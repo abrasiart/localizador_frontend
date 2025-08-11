@@ -10,10 +10,7 @@
     },
     {
       "src": "api/*.js",
-      "use": "@vercel/node",
-      "config": {
-        "distDir": "dist"
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
