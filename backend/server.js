@@ -1,104 +1,134 @@
-const express = require('express');
-const cors = require('cors');
-const fs = require('fs');
-const csv = require('csv-parser');
-const path = require('path');
+import express from "express";
+import cors from "cors";
 
 const app = express();
-const port = 5000;
-
-app.use(cors());
 app.use(express.json());
 
-let stores = [];
-let products = [];
-let pdvProductsMapping = {};
+// CORS (depois restrinja para o domínio do Vercel)
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://SEU-PROJETO.vercel.app"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+app.options("*", cors());
 
-const storesCsvPath = path.join(__dirname, 'pontos_de_venda_final.csv');
-const productsCsvPath = path.join(__dirname, 'produtos.csv');
-const pdvProductsCsvPath = path.join(__dirname, 'pdv_produtos_filtrado_final.csv');
+/** Healthcheck (ajuda no Railway) */
+app.get("/health", (req, res) => res.status(200).json({ ok: true }));
 
-// Função para carregar dados do CSV (assumindo ponto e vírgula como delimitador)
-const loadCsv = (filePath, onData, onEnd) => {
-  fs.createReadStream(filePath)
-    .pipe(csv({ separator: ';' }))
-    .on('data', (data) => onData(data))
-    .on('end', () => onEnd())
-    .on('error', (err) => console.error(`Erro ao ler o arquivo ${filePath}:`, err));
-};
+/** --------- ROTAS QUE O FRONT USA --------- **/
 
-// 1. Carrega a lista de produtos
-const loadProducts = () => {
-  loadCsv(
-    productsCsvPath,
-    (data) => {
-      products.push({
-        id: data.id,
-        nome: data.nome,
-        volume: data.volume,
-        em_destaque: data.em_destaque === 'TRUE',
-        imagem_url: data.imagem_url,
-      });
-    },
-    () => console.log(`Dados de ${products.length} produtos carregados.`)
-  );
-};
-
-// 2. Carrega o mapeamento PDV -> Produtos
-const loadPdvProductsMapping = () => {
-  loadCsv(
-    pdvProductsCsvPath,
-    (data) => {
-      if (!pdvProductsMapping[data.id_pdv]) {
-        pdvProductsMapping[data.id_pdv] = [];
-      }
-      pdvProductsMapping[data.id_pdv].push(data.codigo);
-    },
-    () => console.log('Mapeamento PDV-Produtos carregado.')
-  );
-};
-
-// 3. Carrega a lista de PDVs e adiciona os produtos mapeados
-const loadStores = () => {
-  loadCsv(
-    storesCsvPath,
-    (data) => {
-      data.latitude = parseFloat(data.latitude);
-      data.longitude = parseFloat(data.longitude);
-      const availableProductCodes = pdvProductsMapping[data.id] || [];
-      data.products = availableProductCodes.map(code => {
-        const product = products.find(p => p.id === code);
-        return product ? product.nome : null;
-      }).filter(name => name);
-      stores.push(data);
-    },
-    ()rag() => console.log(`Dados de ${stores.length} PDVs carregados.`)
-  );
-};
-
-// Sequência de carregamento
-loadProducts();
-setTimeout(() => {
-    loadPdvProductsMapping();
-    setTimeout(loadStores, 500);
-}, 500);
-
-// Rota para buscar a lista de produtos
-app.get('/products', (req, res) => {
-  return res.json(products);
+/** 1) Produtos em destaque */
+app.get("/produtos/destaque", async (req, res) => {
+  try {
+    // TODO: troque por dados reais
+    const data = [
+      { id: "1", nome: "Picolé Chocolate", volume: "60 ml", em_destaque: true, imagem_url: "https://via.placeholder.com/150" },
+      { id: "2", nome: "Sorvete Morango", volume: "2 L", em_destaque: true, imagem_url: "https://via.placeholder.com/150" }
+    ];
+    res.json(data);
+  } catch (e) {
+    console.error("Erro /produtos/destaque:", e);
+    res.status(500).json({ erro: "Falha ao carregar destaque" });
+  }
 });
 
-// Rota para buscar PDVs por produto
-app.get('/stores-by-product', (req, res) => {
-    const { productId } = req.query;
-    if (!productId) {
-        return res.status(400).json({ erro: 'O parâmetro productId é obrigatório.' });
+/** 2) Buscar produtos por termo ?q= */
+app.get("/produtos/buscar", async (req, res) => {
+  try {
+    const q = (req.query.q || "").toString().toLowerCase();
+    // TODO: troque por busca real
+    const todos = [
+      { id: "1", nome: "Picolé Chocolate", volume: "60 ml", em_destaque: true, imagem_url: "https://via.placeholder.com/150" },
+      { id: "2", nome: "Sorvete Morango", volume: "2 L", em_destaque: false, imagem_url: "https://via.placeholder.com/150" },
+      { id: "3", nome: "Açai com Banana", volume: "1 L", em_destaque: false, imagem_url: "https://via.placeholder.com/150" }
+    ];
+    const filtrados = todos.filter(p => p.nome.toLowerCase().includes(q));
+    res.json(filtrados);
+  } catch (e) {
+    console.error("Erro /produtos/buscar:", e);
+    res.status(500).json({ erro: "Falha ao buscar produtos" });
+  }
+});
+
+/** 3) PDVs próximos por CEP ?cep=89201001
+ *  Aqui normalmente você faria geocodificação do CEP e acharia PDVs.
+ *  Para centralização do mapa, retornamos pelo menos um item com latitude/longitude/endereço.
+ */
+app.get("/pdvs/proximos", async (req, res) => {
+  try {
+    const cep = (req.query.cep || "").toString();
+    if (!/^\d{8}$/.test(cep)) {
+      return res.status(400).json({ erro: "CEP inválido. Use 8 dígitos." });
     }
 
-    const filteredStores = stores.filter(store => store.products.includes(productId));
-    return res.json(filteredStores);
+    // TODO: troque por geocodificação real e busca em DB
+    const mock = [
+      {
+        id: "pdv-cep-1",
+        nome: "Mercado Central",
+        cep,
+        endereco: `Rua Exemplo, 123 - CEP ${cep}`,
+        latitude: -26.304,
+        longitude: -48.847,
+        distancia_km: 0.9,
+        products: ["1", "2"]
+      }
+    ];
+    res.json(mock);
+  } catch (e) {
+    console.error("Erro /pdvs/proximos:", e);
+    res.status(500).json({ erro: "Falha ao buscar PDVs por CEP" });
+  }
 });
 
-app.listen(port, () => {
-  console.log(`Backend rodando em http://localhost:${port}`);
+/** 4) PDVs próximos por produto + coords
+ *   /pdvs/proximos/produto?productId=ID&lat=-26.30&lon=-48.84
+ */
+app.get("/pdvs/proximos/produto", async (req, res) => {
+  try {
+    const productId = (req.query.productId || "").toString();
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+
+    if (!productId || Number.isNaN(lat) || Number.isNaN(lon)) {
+      return res.status(400).json({ erro: "Parâmetros obrigatórios: productId, lat, lon." });
+    }
+
+    // TODO: troque por busca real de PDVs próximos que vendem o produto
+    const data = [
+      {
+        id: "pdv-1",
+        nome: "Supermercado Perto",
+        cep: "89201001",
+        endereco: "Av. Central, 1000",
+        latitude: lat + 0.005,
+        longitude: lon + 0.005,
+        distancia_km: 0.7,
+        products: [productId]
+      },
+      {
+        id: "pdv-2",
+        nome: "Mini Mercado",
+        cep: "89202002",
+        endereco: "Rua das Flores, 50",
+        latitude: lat - 0.004,
+        longitude: lon - 0.003,
+        distancia_km: 1.2,
+        products: [productId]
+      }
+    ];
+    res.json(data);
+  } catch (e) {
+    console.error("Erro /pdvs/proximos/produto:", e);
+    res.status(500).json({ erro: "Falha ao buscar PDVs por produto" });
+  }
+});
+
+/** Porta/Bind corretos para Railway */
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`API escutando em http://0.0.0.0:${PORT}`);
 });
