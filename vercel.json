@@ -1,14 +1,6 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "build" },
-      "installCommand": "npm config set fetch-retries 5 && npm config set fetch-retry-maxtimeout 600000 && npm ci",
-      "buildCommand": "npm run build"
-    }
-  ],
+
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://localizadorbck-production.up.railway.app/api/$1" },
     { "source": "/((?!api).*)", "destination": "/index.html" }
